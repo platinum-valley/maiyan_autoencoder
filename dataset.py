@@ -1,7 +1,6 @@
 import os
 import cv2
 import torch
-import torchvision
 
 
 def face_detection(image_file):
@@ -19,6 +18,7 @@ def face_detection(image_file):
         for rect in facerect:
             cv2.rectangle(image, tuple(rect[0:2]), tuple(rect[0:2] + rect[2:4]), color, thickness=2)
             cv2.imshow(image)
+
 
 class Dataset(torch.utils.data.Dataset):
     """
