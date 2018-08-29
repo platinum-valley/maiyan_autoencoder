@@ -2,3 +2,4 @@ venv/*
 .idea/*
 ./haarcascade_frontalface_default.xml
 shiraishi_mai/*
+shiraishi_face/*
