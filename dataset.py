@@ -5,7 +5,7 @@ import torchvision
 
 
 def face_detection(image_file):
-    cascade_path = "./models/haarcascade_frontalface_default.xml"
+    cascade_path = "./haarcascade_frontalface_default.xml"
 
     image = cv2.imread(image_file)
     image_gray = cv2.cvtColor(image, cv2.COLOR_BG2GRAY)
