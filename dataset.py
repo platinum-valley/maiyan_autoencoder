@@ -14,6 +14,7 @@ class face_train_Dataset(Dataset):
         """
         初期化関数
         :param image_dir: 画像のルートディレクトリ
+        :param image_name: 画像の名前 "[image_name](番号).jpg"
         """
         self.image_dir = image_dir
         self.image_name = image_name
