@@ -25,9 +25,9 @@ def face_detection(image_dir, output_dir):
         image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         cascade = cv2.CascadeClassifier(cascade_path)
 
-        facerect = cascade.detectMultiScale(image_gray, scaleFactor=1.1, minNeighbors=3, minSize=(30, 30))
+        facerect = cascade.detectMultiScale(image_gray, scaleFactor=1.1, minNeighbors=30, minSize=(30, 30))
 
-        if len(facerect) > 0:
+        if len(facerect) == 1:
 
             for rect in facerect:
                 resize_image = cv2.resize(image[rect[1]:rect[1]+rect[3], rect[0]:rect[0] + rect[2]], image_shape)
