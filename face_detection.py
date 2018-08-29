@@ -16,7 +16,7 @@ def imread(filename, flags=cv2.IMREAD_COLOR, dtype=np.uint8):
 def face_detection(image_dir, output_dir):
     cascade_path = "./haarcascade_frontalface_default.xml"
     color = (255, 255, 255)
-    image_shape = (255, 255)
+    image_shape = (256, 256)
     image_list = os.listdir(image_dir)
     count_image = 0
     for image_file in image_list:
