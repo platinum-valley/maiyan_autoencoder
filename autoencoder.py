@@ -15,24 +15,24 @@ class Autoencoder(nn.Module):
         self.learning_rate = 0.001
 
         self.conv1 = nn.Sequential(
-            nn.ZeroPad2d(1, 2, 1, 2),
+            nn.ZeroPad2d((1, 2, 1, 2)),
             nn.Conv2d(3, 32, kernel_size=5, stride=2),
             nn.ReLU()
         )
         self.conv2 = nn.Sequential(
-            nn.ZeroPad2d(1, 2, 1, 2),
+            nn.ZeroPad2d((1, 2, 1, 2)),
             nn.Conv2d(32, 64, kernel_size=5, stride=2),
             nn.ReLU()
         )
         self.conv3 = nn.Sequential(
-            nn.Conv2d(64, 128, kernel_size=3),
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
         self.conv4 = nn.Sequential(
-            nn.Conv2d(128, 256, kernel_size=3),
+            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        self.fc1 = nn.Conv2d(256, 10, kernel_size=3)
+        self.fc1 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)
 
         self.encoder = nn.Sequential(
             self.conv1,
@@ -43,15 +43,15 @@ class Autoencoder(nn.Module):
         )
 
         self.fc2 = nn.Sequential(
-            nn.ConvTranspose2d(10, 256, kernel_size=3),
+            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
         self.conv4dec = nn.Sequential(
-            nn.ConvTranspose2d(256, 128, kernel_size=3),
+            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
         self.conv3dec = nn.Sequential(
-            nn.ConvTranspose2d(128, 64, kernel_size=3),
+            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
         self.conv2dec = nn.Sequential(
@@ -71,11 +71,17 @@ class Autoencoder(nn.Module):
         )
 
     def forward(self, x):
-        encoded = self.encoder(x)
+        #encoded = self.encoder(x)
+        encoded = self.conv1(x)
+        encoded = self.conv2(encoded)
+        encoded = self.conv3(encoded)
+        encoded = self.conv4(encoded)
+        encoded = self.fc1(encoded)
         decoded = self.fc2(encoded)
-        decoded = self.conv3d(decoded)
-        decoded = self.conv2d(decoded)[:, :, 1:-2, 1:-2]
-        decoded = self.conv1d(decoded)[:, :, 1:-2, 1:-2]
+        decoded = self.conv4dec(decoded)
+        decoded = self.conv3dec(decoded)
+        decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
+        decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
         decoded = nn.Sigmoid()(decoded)
 
         return encoded, decoded

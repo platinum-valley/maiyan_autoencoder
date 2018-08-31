@@ -19,7 +19,7 @@ class face_train_Dataset(Dataset):
         self.image_dir = image_dir
         self.image_name = image_name
         self.image_num = len(os.listdir(image_dir))
-        self.tranform = transform
+        self.transform = transform
 
     def __len__(self):
         """
@@ -29,8 +29,8 @@ class face_train_Dataset(Dataset):
         return self.image_num
 
     def __getitem__(self, idx):
-        image_path = os.path.join(self.image_dir, self.image_name + str(idx) + ".jpg")
+        image_path = os.path.join(self.image_dir, self.image_name + "_" + str(idx) + ".jpg")
         image = cv2.imread(image_path)
         if self.transform:
-            image = self.tranform(image)
-        return image
+            image = self.transform(image)
+        return (image, image)

@@ -25,8 +25,8 @@ def get_argument():
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
-    parser.add_argument("embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
-    parser.add_argument("outdir_path", type=str, help="directory path of outputs")
+    parser.add_argument("--embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
+    parser.add_argument("--outdir_path", type=str, help="directory path of outputs")
     args = parser.parse_args()
     return args
 
@@ -35,8 +35,8 @@ def main(args):
     trans = transforms.ToTensor()
     train_dataset = face_train_Dataset("./shiraishi_face", transform=trans)
     valid_dataset = face_train_Dataset("./shiraishi_face", transform=trans)
-    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
-    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
+    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     train_size = len(train_dataset)
     valid_size = len(valid_dataset)
     loaders = {"train": train_loader, "valid": valid_loader}
@@ -45,10 +45,11 @@ def main(args):
     # make network
     c, w, h = train_dataset[0][0].size()
     net = Autoencoder()
-    net.cuda()
+    #net.cuda()
 
     # make loss function and optimizer
-    criterion = nn.BCELoss().cuda
+    #criterion = nn.BCELoss().cuda
+    criterion = nn.BCELoss()
     optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # initialize model state
@@ -72,14 +73,16 @@ def main(args):
             # initialize running loss
             running_loss = 0.0
 
-            for i, data in enumerate(train_loader[phase]):
+            for i, data in enumerate(loaders[phase]):
                 inputs, _ = data
 
                 # wrap the in valiables
                 if phase == "train":
-                    inputs = Variable(inputs.cuda())
+                    inputs = Variable(inputs)
+                    torch.set_grad_enabled(True)
                 else:
-                    inputs = Variable(inputs.cuda(), volatile=True)
+                    inputs = Variable(inputs)
+                    torch.set_grad_enabled(False)
 
                 # zero gradients
                 optimizer.zero_grad()
@@ -93,7 +96,7 @@ def main(args):
                     loss.backward()
                     optimizer.step()
 
-                running_loss += loss.data[0]
+                running_loss += loss.item()
 
             epoch_loss = running_loss / dataset_sizes[phase] * args.batch_size
             loss_history[phase].append(epoch_loss)
@@ -104,7 +107,7 @@ def main(args):
                 best_model_wts = net.state_dict()
 
     elapsed_time = time.time() - start_time
-    print("training complete in {:.0f}s".fomat(elapsed_time))
+    print("training complete in {:.0f}s".format(elapsed_time))
 
     net.load_state_dict(best_model_wts)
     return net, loss_history
