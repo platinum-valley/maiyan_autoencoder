@@ -3,3 +3,5 @@ venv/*
 ./haarcascade_frontalface_default.xml
 shiraishi_mai/*
 shiraishi_face/*
+weight.pth
+training_history_*

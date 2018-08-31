@@ -21,12 +21,12 @@ def get_argument():
 
     parser = argparse.ArgumentParser(description="Parameter for training of network ")
     parser.add_argument("--batch_size", type=int, default=16, help="input batch size for training (default:16)")
-    parser.add_argument("--epochs", type=int, default=100, help="number of epoch to train (default:100)")
+    parser.add_argument("--epochs", type=int, default=1, help="number of epoch to train (default:100)")
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
     parser.add_argument("--embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
-    parser.add_argument("--outdir_path", type=str, help="directory path of outputs")
+    parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
     args = parser.parse_args()
     return args
 
@@ -112,6 +112,7 @@ def main(args):
     net.load_state_dict(best_model_wts)
     return net, loss_history
 
+
 if __name__ == "__main__":
     args = get_argument()
 
@@ -120,6 +121,6 @@ if __name__ == "__main__":
     training_history = np.zeros((2, args.epochs))
     for i, phase in enumerate(["train", "valid"]):
         training_history[i] = loss_history[phase]
-    np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.data.today())), training_history)
+    np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
 
 
