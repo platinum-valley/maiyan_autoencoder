@@ -31,11 +31,11 @@ def face_detection(image_dir, output_dir):
 
             for rect in facerect:
                 resize_image = cv2.resize(image[rect[1]:rect[1]+rect[3], rect[0]:rect[0] + rect[2]], image_shape)
-                cv2.imwrite(output_dir + "/shiraishi_" + str(count_image) + ".jpg", resize_image)
+                cv2.imwrite(output_dir + "/nogizaka_" + str(count_image) + ".jpg", resize_image)
                 count_image += 1
 
 
 if __name__ == "__main__":
-    image_dir = "./shiraishi_mai"
-    output_dir = "./shiraishi_face"
+    image_dir = "./nogizaka"
+    output_dir = "./nogizaka_face"
     face_detection(image_dir, output_dir)

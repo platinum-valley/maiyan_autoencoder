@@ -116,7 +116,7 @@ def main(args):
 def recog(args, model_params):
 
     trans = transforms.ToTensor()
-    valid_dataset = face_train_Dataset("./shiraishi_face", transform=trans)
+    valid_dataset = face_train_Dataset("./nogizaka_face", "nogizaka", transform=trans)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=1)
     valid_size = len(valid_dataset)
     loaders = {"valid": valid_loader}
@@ -155,8 +155,6 @@ def recog(args, model_params):
 
 if __name__ == "__main__":
     args = get_argument()
-    """
-    
     model_weights, loss_history = main(args)
     torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight.pth"))
     training_history = np.zeros((2, args.epochs))
@@ -164,6 +162,5 @@ if __name__ == "__main__":
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
 
-    """
-    recog(args, "./weight.pth")
+    #recog(args, "./weight.pth")
 

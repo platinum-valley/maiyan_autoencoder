@@ -6,6 +6,11 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 
+class Flatten(nn.Module):
+    def forward(self, x):
+        x = x.view(x.size()[0], -1)
+        return x
+
 class Autoencoder(nn.Module):
 
     def __init__(self):
@@ -32,7 +37,8 @@ class Autoencoder(nn.Module):
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
             nn.ReLU()
         )
-        self.fc1 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)
+        self.fc1 = nn.Conv2d(256, 10, kernel_size=3, stride=2, padding=1)
+
 
         self.encoder = nn.Sequential(
             self.conv1,
@@ -41,9 +47,14 @@ class Autoencoder(nn.Module):
             self.conv4,
             self.fc1
         )
-
+        """
+        self.fc22 = nn.Linear(
+            nn.Linear(2, 512*8*8, bias=True),
+            #nn.ReLU()
+        )
+        """
         self.fc2 = nn.Sequential(
-            nn.ConvTranspose2d(512, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
+            nn.ConvTranspose2d(10, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
         self.conv4dec = nn.Sequential(
