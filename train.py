@@ -11,6 +11,7 @@ from dataset import face_train_Dataset
 
 import numpy as np
 import os
+import cv2
 import time
 import argparse
 import datetime
@@ -21,7 +22,7 @@ def get_argument():
 
     parser = argparse.ArgumentParser(description="Parameter for training of network ")
     parser.add_argument("--batch_size", type=int, default=16, help="input batch size for training (default:16)")
-    parser.add_argument("--epochs", type=int, default=1, help="number of epoch to train (default:100)")
+    parser.add_argument("--epochs", type=int, default=100, help="number of epoch to train (default:100)")
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
@@ -112,10 +113,50 @@ def main(args):
     net.load_state_dict(best_model_wts)
     return net, loss_history
 
+def recog(args, model_params):
+
+    trans = transforms.ToTensor()
+    valid_dataset = face_train_Dataset("./shiraishi_face", transform=trans)
+    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=1)
+    valid_size = len(valid_dataset)
+    loaders = {"valid": valid_loader}
+    dataset_sizes = {"valid": valid_size}
+
+    # make network
+    c, w, h = valid_dataset[0][0].size()
+    net = Autoencoder()
+    net.load_state_dict(torch.load(model_params))
+
+    # make loss function and optimizer
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    running_loss = 0.0
+    for i, data in enumerate(loaders["valid"]):
+
+        inputs, _ = data
+
+        inputs = Variable(inputs)
+        torch.set_grad_enabled(False)
+
+        # zero gradients
+        optimizer.zero_grad()
+
+        # forward
+        _, outputs = net(inputs)
+        loss = criterion(outputs, inputs)
+
+        running_loss += loss.item()
+        visible_image = (outputs[0].numpy()*255).astype(np.uint8).transpose(1, 2, 0)
+        cv2.imshow("test", visible_image)
+        cv2.waitKey(300)
+        epoch_loss = running_loss / dataset_sizes["valid"] * args.batch_size
+
 
 if __name__ == "__main__":
     args = get_argument()
-
+    """
+    
     model_weights, loss_history = main(args)
     torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight.pth"))
     training_history = np.zeros((2, args.epochs))
@@ -123,4 +164,6 @@ if __name__ == "__main__":
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
 
+    """
+    recog(args, "./weight.pth")
 

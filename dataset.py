@@ -30,7 +30,7 @@ class face_train_Dataset(Dataset):
 
     def __getitem__(self, idx):
         image_path = os.path.join(self.image_dir, self.image_name + "_" + str(idx) + ".jpg")
-        image = cv2.imread(image_path)
+        input_image = cv2.imread(image_path)
         if self.transform:
-            image = self.transform(image)
+            image = self.transform(input_image)
         return (image, image)
