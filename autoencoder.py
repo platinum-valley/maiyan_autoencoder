@@ -39,21 +39,21 @@ class Autoencoder(nn.Module):
         )
         self.fc1 = nn.Conv2d(256, 10, kernel_size=3, stride=2, padding=1)
 
+        self.fc2 = nn.Linear(640, 2, bias=True)
 
-        self.encoder = nn.Sequential(
-            self.conv1,
-            self.conv2,
-            self.conv3,
-            self.conv4,
-            self.fc1
+        self.fc_mu = nn.Sequential(
+            nn.Linear(640, 2, bias=True),
+            nn.ReLU()
         )
-        """
-        self.fc22 = nn.Linear(
-            nn.Linear(2, 512*8*8, bias=True),
-            #nn.ReLU()
+
+        self.fc_var = nn.Sequential(
+            nn.Linear(640, 2, bias=True),
+            nn.ReLU()
         )
-        """
-        self.fc2 = nn.Sequential(
+
+        self.fc2dec = nn.Linear(2, 640, bias=True)
+
+        self.fc1dec = nn.Sequential(
             nn.ConvTranspose2d(10, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
@@ -81,19 +81,28 @@ class Autoencoder(nn.Module):
             self.conv1dec
         )
 
+    def reparameterize(self, mu, var):
+        std = var.mul(0.5).exp_()
+        eps = Variable(std.data.new(std.size()).normal_())
+        return eps.mul(std).add_(mu)
+
     def forward(self, x):
         #encoded = self.encoder(x)
         encoded = self.conv1(x)
         encoded = self.conv2(encoded)
         encoded = self.conv3(encoded)
         encoded = self.conv4(encoded)
-        encoded = self.fc1(encoded)
-        decoded = self.fc2(encoded)
+        encoded = self.fc1(encoded).view(encoded.size()[0], -1)
+        mu = self.fc_mu(encoded)
+        var = self.fc_var(encoded)
+        print(mu, var)
+        z = self.reparameterize(mu, var)
+        decoded = self.fc2dec(z)
+        decoded = self.fc1dec(decoded.view(decoded.size()[0], 10, 8, 8))
         decoded = self.conv4dec(decoded)
         decoded = self.conv3dec(decoded)
         decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
         decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
         decoded = nn.Sigmoid()(decoded)
-
-        return encoded, decoded
+        return mu, var, decoded
 

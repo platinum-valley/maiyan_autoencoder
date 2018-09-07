@@ -34,8 +34,8 @@ def get_argument():
 def main(args):
     # make dataset
     trans = transforms.ToTensor()
-    train_dataset = face_train_Dataset("./shiraishi_face", transform=trans)
-    valid_dataset = face_train_Dataset("./shiraishi_face", transform=trans)
+    train_dataset = face_train_Dataset("./shiraishi_saito", "./data.csv", transform=trans)
+    valid_dataset = face_train_Dataset("./shiraishi_saito", "./data.csv", transform=trans)
     train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     train_size = len(train_dataset)
@@ -89,9 +89,9 @@ def main(args):
                 optimizer.zero_grad()
 
                 # forward
-                _, outputs = net(inputs)
-                loss = criterion(outputs, inputs)
-
+                mu, var, outputs = net(inputs)
+                #loss = criterion(outputs, inputs)
+                loss = loss_func(inputs, outputs, mu, var)
                 # backward and optimize
                 if phase == "train":
                     loss.backward()
@@ -113,10 +113,16 @@ def main(args):
     net.load_state_dict(best_model_wts)
     return net, loss_history
 
-def recog(args, model_params):
+def loss_func(inputs, outputs, mu, var):
+    loss = nn.BCELoss()
+    entropy = loss(outputs, inputs)
+    kld = - 0.5 * torch.sum(1 + var - mu.pow(2) - var.exp())
+    return entropy + kld
+
+def recog(args, model_params, image_dir_name):
 
     trans = transforms.ToTensor()
-    valid_dataset = face_train_Dataset("./nogizaka_face", "nogizaka", transform=trans)
+    valid_dataset = face_train_Dataset(image_dir_name, "./data.csv", transform=trans)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=1)
     valid_size = len(valid_dataset)
     loaders = {"valid": valid_loader}
@@ -143,8 +149,10 @@ def recog(args, model_params):
         optimizer.zero_grad()
 
         # forward
-        _, outputs = net(inputs)
-        loss = criterion(outputs, inputs)
+        mu, var, outputs = net(inputs)
+        #loss = criterion(outputs, inputs)
+        loss = loss_func(inputs, outputs, mu, var)
+
 
         running_loss += loss.item()
         visible_image = (outputs[0].numpy()*255).astype(np.uint8).transpose(1, 2, 0)
@@ -155,6 +163,7 @@ def recog(args, model_params):
 
 if __name__ == "__main__":
     args = get_argument()
+
     model_weights, loss_history = main(args)
     torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight.pth"))
     training_history = np.zeros((2, args.epochs))
@@ -162,5 +171,5 @@ if __name__ == "__main__":
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
 
-    #recog(args, "./weight.pth")
+    recog(args, "./weight.pth", "shiraishi_saito")
 
