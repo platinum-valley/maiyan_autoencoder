@@ -12,6 +12,7 @@ from dataset import face_train_Dataset
 import numpy as np
 import os
 import cv2
+import pickle
 import time
 import argparse
 import datetime
@@ -21,21 +22,24 @@ def get_argument():
     # get argument
 
     parser = argparse.ArgumentParser(description="Parameter for training of network ")
-    parser.add_argument("--batch_size", type=int, default=16, help="input batch size for training (default:16)")
-    parser.add_argument("--epochs", type=int, default=100, help="number of epoch to train (default:100)")
+    parser.add_argument("--batch_size", type=int, default=1, help="input batch size for training (default:16)")
+    parser.add_argument("--epochs", type=int, default=20, help="number of epoch to train (default:100)")
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
     parser.add_argument("--embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
     parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
+    parser.add_argument("--label_num", type=int, default=13, help="number of image label")
     args = parser.parse_args()
     return args
 
 def main(args):
     # make dataset
     trans = transforms.ToTensor()
-    train_dataset = face_train_Dataset("./shiraishi_saito", "./data.csv", transform=trans)
-    valid_dataset = face_train_Dataset("./shiraishi_saito", "./data.csv", transform=trans)
+    train_dataset = face_train_Dataset("./nogizaka_face", "./data.csv", transform=trans)
+    label_dict = train_dataset.get_label_dict()
+    valid_dataset = face_train_Dataset("./nogi_face", "./valid_data.csv", transform=trans)
+    valid_dataset.give_label_dict(label_dict)
     train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     train_size = len(train_dataset)
@@ -45,7 +49,7 @@ def main(args):
 
     # make network
     c, w, h = train_dataset[0][0].size()
-    net = Autoencoder()
+    net = Autoencoder(train_dataset.label_num())
     #net.cuda()
 
     # make loss function and optimizer
@@ -58,7 +62,7 @@ def main(args):
     best_loss = 0.0
 
     # initialize loss
-    loss_history = {"train": [], "valid":[]}
+    loss_history = {"train": [], "valid": []}
 
     # start training
     start_time = time.time()
@@ -75,21 +79,23 @@ def main(args):
             running_loss = 0.0
 
             for i, data in enumerate(loaders[phase]):
-                inputs, _ = data
+                inputs, label = data
 
                 # wrap the in valiables
                 if phase == "train":
                     inputs = Variable(inputs)
+                    label = Variable(label)
                     torch.set_grad_enabled(True)
                 else:
                     inputs = Variable(inputs)
+                    label = Variable(label)
                     torch.set_grad_enabled(False)
 
                 # zero gradients
                 optimizer.zero_grad()
 
                 # forward
-                mu, var, outputs = net(inputs)
+                mu, var, outputs = net(inputs, label)
                 #loss = criterion(outputs, inputs)
                 loss = loss_func(inputs, outputs, mu, var)
                 # backward and optimize
@@ -111,18 +117,19 @@ def main(args):
     print("training complete in {:.0f}s".format(elapsed_time))
 
     net.load_state_dict(best_model_wts)
-    return net, loss_history
+    return net, loss_history,label_dict
 
 def loss_func(inputs, outputs, mu, var):
-    loss = nn.BCELoss()
+    loss = nn.BCELoss(reduction="sum")
     entropy = loss(outputs, inputs)
     kld = - 0.5 * torch.sum(1 + var - mu.pow(2) - var.exp())
     return entropy + kld
 
-def recog(args, model_params, image_dir_name):
+def recog(args, model_params, image_dir_name, label_dict):
 
     trans = transforms.ToTensor()
     valid_dataset = face_train_Dataset(image_dir_name, "./data.csv", transform=trans)
+    valid_dataset.give_label_dict(label_dict)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=1)
     valid_size = len(valid_dataset)
     loaders = {"valid": valid_loader}
@@ -130,7 +137,7 @@ def recog(args, model_params, image_dir_name):
 
     # make network
     c, w, h = valid_dataset[0][0].size()
-    net = Autoencoder()
+    net = Autoencoder(args.label_num)
     net.load_state_dict(torch.load(model_params))
 
     # make loss function and optimizer
@@ -140,36 +147,45 @@ def recog(args, model_params, image_dir_name):
     running_loss = 0.0
     for i, data in enumerate(loaders["valid"]):
 
-        inputs, _ = data
+        inputs, label = data
 
         inputs = Variable(inputs)
+        label = Variable(label)
         torch.set_grad_enabled(False)
 
         # zero gradients
         optimizer.zero_grad()
 
         # forward
-        mu, var, outputs = net(inputs)
+        mu, var, outputs = net(inputs, label)
         #loss = criterion(outputs, inputs)
         loss = loss_func(inputs, outputs, mu, var)
 
 
         running_loss += loss.item()
+        #print(input)
+        visible_image = (inputs[0].numpy() * 255).astype(np.uint8).transpose(1, 2, 0)
+        cv2.imshow("test1", visible_image)
         visible_image = (outputs[0].numpy()*255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imshow("test", visible_image)
+        cv2.imshow("test2", visible_image)
         cv2.waitKey(300)
         epoch_loss = running_loss / dataset_sizes["valid"] * args.batch_size
 
 
 if __name__ == "__main__":
     args = get_argument()
-
-    model_weights, loss_history = main(args)
+    """
+    model_weights, loss_history, label_dict = main(args)
     torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight.pth"))
+    with open("label.dict.pkl", "wb") as f:
+        pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
     training_history = np.zeros((2, args.epochs))
     for i, phase in enumerate(["train", "valid"]):
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-
-    recog(args, "./weight.pth", "shiraishi_saito")
+    """
+    label_dict = {}
+    with open("label.dict.pkl", "rb") as f:
+        label_dict = pickle.load(f)
+    recog(args, "./weight.pth", "nogizaka_face", label_dict)
 

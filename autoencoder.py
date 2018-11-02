@@ -13,28 +13,45 @@ class Flatten(nn.Module):
 
 class Autoencoder(nn.Module):
 
-    def __init__(self):
+    def __init__(self, label_num):
         super(Autoencoder, self).__init__()
         self.batch_size = 16
         self.num_epoch = 10
-        self.learning_rate = 0.001
+        self.label_num = 12
+        self.learning_rate = 20
 
         self.conv1 = nn.Sequential(
             nn.ZeroPad2d((1, 2, 1, 2)),
             nn.Conv2d(3, 32, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
             nn.ReLU()
         )
         self.conv2 = nn.Sequential(
             nn.ZeroPad2d((1, 2, 1, 2)),
             nn.Conv2d(32, 64, kernel_size=5, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.ReLU()
         )
         self.conv3 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
             nn.ReLU()
         )
         self.conv4 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
             nn.ReLU()
         )
         self.fc1 = nn.Conv2d(256, 10, kernel_size=3, stride=2, padding=1)
@@ -42,16 +59,21 @@ class Autoencoder(nn.Module):
         self.fc2 = nn.Linear(640, 2, bias=True)
 
         self.fc_mu = nn.Sequential(
-            nn.Linear(640, 2, bias=True),
+            nn.Linear(640, 400, bias=True),
             nn.ReLU()
         )
 
         self.fc_var = nn.Sequential(
-            nn.Linear(640, 2, bias=True),
+            nn.Linear(640, 400, bias=True),
             nn.ReLU()
         )
 
-        self.fc2dec = nn.Linear(2, 640, bias=True)
+        self.emb_label = nn.Sequential(
+            nn.Linear(self.label_num, 400, bias=True),
+            nn.ReLU()
+        )
+
+        self.fc2dec = nn.Linear(400, 640, bias=True)
 
         self.fc1dec = nn.Sequential(
             nn.ConvTranspose2d(10, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
@@ -86,7 +108,7 @@ class Autoencoder(nn.Module):
         eps = Variable(std.data.new(std.size()).normal_())
         return eps.mul(std).add_(mu)
 
-    def forward(self, x):
+    def forward(self, x, label):
         #encoded = self.encoder(x)
         encoded = self.conv1(x)
         encoded = self.conv2(encoded)
@@ -95,8 +117,10 @@ class Autoencoder(nn.Module):
         encoded = self.fc1(encoded).view(encoded.size()[0], -1)
         mu = self.fc_mu(encoded)
         var = self.fc_var(encoded)
-        print(mu, var)
+        emb_label = self.emb_label(label)
+        #print(mu, var)
         z = self.reparameterize(mu, var)
+        z = z + emb_label
         decoded = self.fc2dec(z)
         decoded = self.fc1dec(decoded.view(decoded.size()[0], 10, 8, 8))
         decoded = self.conv4dec(decoded)

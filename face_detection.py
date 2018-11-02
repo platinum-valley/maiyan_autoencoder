@@ -15,8 +15,10 @@ def imread(filename, flags=cv2.IMREAD_COLOR, dtype=np.uint8):
         return None
 
 
-def face_detection(image_dir, output_dir):
+def face_detection(image_dir, output_dir, name):
     cascade_path = "./haarcascade_frontalface_default.xml"
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
     color = (255, 255, 255)
     image_shape = (256, 256)
     image_list = os.listdir(image_dir)
@@ -28,13 +30,13 @@ def face_detection(image_dir, output_dir):
         image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         cascade = cv2.CascadeClassifier(cascade_path)
 
-        facerect = cascade.detectMultiScale(image_gray, scaleFactor=1.1, minNeighbors=10, minSize=(30, 30))
+        facerect = cascade.detectMultiScale(image_gray, scaleFactor=1.1, minNeighbors=30, minSize=(30, 30))
 
         if len(facerect) == 1:
 
             for rect in facerect:
                 resize_image = cv2.resize(image[rect[1]:rect[1]+rect[3], rect[0]:rect[0] + rect[2]], image_shape)
-                cv2.imwrite(output_dir + "/saito_" + str(count_image) + ".jpg", resize_image)
+                cv2.imwrite(output_dir + "/" + name + "_" + str(count_image) + ".jpg", resize_image)
                 count_image += 1
 
 def dir_rename(image_dir, output_dir):
@@ -46,16 +48,20 @@ def make_dataset_csv(image_dir, output_csv):
     image_list = os.listdir(image_dir)
     csv_list = []
     for image_file in image_list:
-        csv_list.append(( image_dir + "/" + image_file, image_file.split("_")[0]))
+        csv_list.append((image_dir + "/" + image_file, image_file.split("_")[0]))
     df = pd.DataFrame(csv_list)
     df.to_csv(output_csv, index=False, header=False)
 
 
 if __name__ == "__main__":
-    image_dir = "./saito_asuka"
-    output_dir = "./saito_face"
-    #face_detection(image_dir, output_dir)
-    #dir_rename(output_dir, "tmp")
-    #dir_rename("tmp", output_dir )
-    make_dataset_csv("./shiraishi_saito", "./data.csv")
+    input_dirs = ["nogi"]
+    output_dirs = ["nogi_face"]
+    #input_dirs = ["akimoto_manatsu", "hori_miona", "hoshino_minami", "ikoma_rina", "yamashita_mizuki", "yoda_yuki","ikuta_erika", "matsumura_sayuri", "nishino_nanase"]
+    #output_dirs = ["akimoto_face", "hori_face", "hoshino_face", "ikoma_face", "yamashita_face", "yoda_face","ikuta_face", "matsumura_face", "nishino_face"]
+    #for input, output in zip(input_dirs, output_dirs):
+    #    face_detection("./"+input, "./"+output, input.split("_")[0])
+
+        #dir_rename(output, "tmp")
+        #dir_rename("tmp", output )
+    make_dataset_csv("./nogi_face", "./valid_data.csv")
 
