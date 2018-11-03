@@ -22,7 +22,7 @@ def get_argument():
     # get argument
 
     parser = argparse.ArgumentParser(description="Parameter for training of network ")
-    parser.add_argument("--batch_size", type=int, default=1, help="input batch size for training (default:16)")
+    parser.add_argument("--batch_size", type=int, default=32, help="input batch size for training (default:16)")
     parser.add_argument("--epochs", type=int, default=20, help="number of epoch to train (default:100)")
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
@@ -49,7 +49,7 @@ def main(args):
 
     # make network
     c, w, h = train_dataset[0][0].size()
-    net = Autoencoder(train_dataset.label_num())
+    net = Autoencoder(train_dataset.label_num() + 1)
     #net.cuda()
 
     # make loss function and optimizer
@@ -174,16 +174,16 @@ def recog(args, model_params, image_dir_name, label_dict):
 
 if __name__ == "__main__":
     args = get_argument()
-    """
+
     model_weights, loss_history, label_dict = main(args)
-    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight.pth"))
+    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_with_celeba.pth"))
     with open("label.dict.pkl", "wb") as f:
         pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
     training_history = np.zeros((2, args.epochs))
     for i, phase in enumerate(["train", "valid"]):
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-    """
+
     label_dict = {}
     with open("label.dict.pkl", "rb") as f:
         label_dict = pickle.load(f)
