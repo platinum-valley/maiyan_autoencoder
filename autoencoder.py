@@ -17,7 +17,7 @@ class Autoencoder(nn.Module):
         super(Autoencoder, self).__init__()
         self.batch_size = 16
         self.num_epoch = 10
-        self.label_num = 12
+        self.label_num = label_num
         self.learning_rate = 20
 
         self.conv1 = nn.Sequential(

@@ -24,6 +24,7 @@ class face_train_Dataset(Dataset):
         self.image_num = len(os.listdir(image_dir))
         self.transform = transform
         self.data = pd.read_csv(self.csv_path, header=None)
+        self.image_num = len(self.data)
         self.label_dict = {}
         label_count = 0
         for i in range(self.image_num):

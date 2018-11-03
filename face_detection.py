@@ -44,24 +44,26 @@ def dir_rename(image_dir, output_dir):
     for i, image_file in enumerate(image_list):
         os.rename(image_dir + "/" + image_file, output_dir + "/" + re.sub("[0-9]+", str(i), image_file))
 
-def make_dataset_csv(image_dir, output_csv):
-    image_list = os.listdir(image_dir)
+def make_dataset_csv(image_dir_list, output_csv):
     csv_list = []
-    for image_file in image_list:
-        csv_list.append((image_dir + "/" + image_file, image_file.split("_")[0]))
+    for image_dir in image_dir_list:
+        image_list = os.listdir(image_dir)
+
+        for image_file in image_list:
+            csv_list.append((image_dir + "/" + image_file, image_file.split("_")[0]))
     df = pd.DataFrame(csv_list)
     df.to_csv(output_csv, index=False, header=False)
 
 
 if __name__ == "__main__":
-    input_dirs = ["nogi"]
-    output_dirs = ["nogi_face"]
+    input_dirs = ["img_align_celeba"]
+    output_dirs = ["celeba_face"]
     #input_dirs = ["akimoto_manatsu", "hori_miona", "hoshino_minami", "ikoma_rina", "yamashita_mizuki", "yoda_yuki","ikuta_erika", "matsumura_sayuri", "nishino_nanase"]
     #output_dirs = ["akimoto_face", "hori_face", "hoshino_face", "ikoma_face", "yamashita_face", "yoda_face","ikuta_face", "matsumura_face", "nishino_face"]
     #for input, output in zip(input_dirs, output_dirs):
-    #    face_detection("./"+input, "./"+output, input.split("_")[0])
+    #    face_detection("./"+input, "./"+output, "celeb")
 
         #dir_rename(output, "tmp")
         #dir_rename("tmp", output )
-    make_dataset_csv("./nogi_face", "./valid_data.csv")
+    make_dataset_csv(["./celeba_face", "nogizaka_face"], "./data.csv")
 
