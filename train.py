@@ -22,14 +22,14 @@ def get_argument():
     # get argument
 
     parser = argparse.ArgumentParser(description="Parameter for training of network ")
-    parser.add_argument("--batch_size", type=int, default=32, help="input batch size for training (default:16)")
+    parser.add_argument("--batch_size", type=int, default=64, help="input batch size for training (default:16)")
     parser.add_argument("--epochs", type=int, default=20, help="number of epoch to train (default:100)")
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
     parser.add_argument("--embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
     parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
-    parser.add_argument("--label_num", type=int, default=13, help="number of image label")
+    parser.add_argument("--gpu", action="store_true", help="using gpu")
     args = parser.parse_args()
     return args
 
@@ -47,9 +47,14 @@ def main(args):
     loaders = {"train": train_loader, "valid": valid_loader}
     dataset_sizes = {"train": train_size, "valid": valid_size}
 
+    if args.gpu:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
+    print(device)
     # make network
     c, w, h = train_dataset[0][0].size()
-    net = Autoencoder(train_dataset.label_num() + 1)
+    net = Autoencoder(train_dataset.label_num() + 1).to(device)
     #net.cuda()
 
     # make loss function and optimizer
@@ -83,12 +88,12 @@ def main(args):
 
                 # wrap the in valiables
                 if phase == "train":
-                    inputs = Variable(inputs)
-                    label = Variable(label)
+                    inputs = Variable(inputs).to(device)
+                    label = Variable(label).to(device)
                     torch.set_grad_enabled(True)
                 else:
-                    inputs = Variable(inputs)
-                    label = Variable(label)
+                    inputs = Variable(inputs).to(device)
+                    label = Variable(label).to(device)
                     torch.set_grad_enabled(False)
 
                 # zero gradients
@@ -135,9 +140,14 @@ def recog(args, model_params, image_dir_name, label_dict):
     loaders = {"valid": valid_loader}
     dataset_sizes = {"valid": valid_size}
 
+    if args.gpu:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
+
     # make network
     c, w, h = valid_dataset[0][0].size()
-    net = Autoencoder(args.label_num)
+    net = Autoencoder(args.label_num).to(device)
     net.load_state_dict(torch.load(model_params))
 
     # make loss function and optimizer
@@ -149,8 +159,8 @@ def recog(args, model_params, image_dir_name, label_dict):
 
         inputs, label = data
 
-        inputs = Variable(inputs)
-        label = Variable(label)
+        inputs = Variable(inputs).to(device)
+        label = Variable(label).to(device)
         torch.set_grad_enabled(False)
 
         # zero gradients
@@ -164,11 +174,13 @@ def recog(args, model_params, image_dir_name, label_dict):
 
         running_loss += loss.item()
         #print(input)
+        """
         visible_image = (inputs[0].numpy() * 255).astype(np.uint8).transpose(1, 2, 0)
         cv2.imshow("test1", visible_image)
         visible_image = (outputs[0].numpy()*255).astype(np.uint8).transpose(1, 2, 0)
         cv2.imshow("test2", visible_image)
         cv2.waitKey(300)
+        """
         epoch_loss = running_loss / dataset_sizes["valid"] * args.batch_size
 
 
