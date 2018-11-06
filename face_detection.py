@@ -1,4 +1,5 @@
 import os
+import shutil
 import re
 import cv2
 import pandas as pd
@@ -42,7 +43,7 @@ def face_detection(image_dir, output_dir, name):
 def dir_rename(image_dir, output_dir):
     image_list = os.listdir(image_dir)
     for i, image_file in enumerate(image_list):
-        os.rename(image_dir + "/" + image_file, output_dir + "/" + re.sub("[0-9]+", str(i), image_file))
+        os.rename(image_dir + "/" + image_file, output_dir + "/" + image_file.split("_")[0] + "_" + str(i) + ".jpg")
 
 def make_dataset_csv(image_dir_list, output_csv):
     csv_list = []
@@ -54,16 +55,39 @@ def make_dataset_csv(image_dir_list, output_csv):
     df = pd.DataFrame(csv_list)
     df.to_csv(output_csv, index=False, header=False)
 
+def flip_image(image):
+    return image[:, ::-1, :]
+
+def add_noise(image):
+    noise = np.random.normal(0, 0.1, (256, 256, 3)) * 255
+    return image + noise
+
+def augmentation(input_dir, output_dir):
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
+    for img in os.listdir(input_dir):
+        input_img = cv2.imread(input_dir + "/" + img)
+        fliped = flip_image(input_img)
+        noisy = add_noise(input_img)
+        cv2.imwrite(output_dir + "/" + img, input_img)
+        cv2.imwrite(output_dir + "/" + img.split("_")[0] + "_flip_" + img.split("_")[1], fliped)
+        cv2.imwrite(output_dir + "/" + img.split("_")[0] + "_noisy_" + img.split("_")[1], noisy)
 
 if __name__ == "__main__":
-    input_dirs = ["img_align_celeba"]
-    output_dirs = ["celeba_face"]
-    #input_dirs = ["akimoto_manatsu", "hori_miona", "hoshino_minami", "ikoma_rina", "yamashita_mizuki", "yoda_yuki","ikuta_erika", "matsumura_sayuri", "nishino_nanase"]
-    #output_dirs = ["akimoto_face", "hori_face", "hoshino_face", "ikoma_face", "yamashita_face", "yoda_face","ikuta_face", "matsumura_face", "nishino_face"]
+    input_dirs = ["shiraishi_mai", "saito_asuka", "akimoto_manatsu", "hori_miona", "hoshino_minami", "ikoma_rina", "yamashita_mizuki", "yoda_yuki","ikuta_erika", "matsumura_sayuri", "nishino_nanase"]
+    output_dirs = ["shiraishi_face", "saito_face", "akimoto_face", "hori_face", "hoshino_face", "ikoma_face", "yamashita_face", "yoda_face","ikuta_face", "matsumura_face", "nishino_face"]
+    dataset_dir = "nogizaka_face"
     #for input, output in zip(input_dirs, output_dirs):
     #    face_detection("./"+input, "./"+output, "celeb")
-
-        #dir_rename(output, "tmp")
-        #dir_rename("tmp", output )
-    make_dataset_csv(["./celeba_face", "nogizaka_face"], "./data.csv")
+    """
+    if os.path.exists("tmp"):
+        shutil.rmtree("tmp")
+    os.mkdir("tmp")
+    for data_dir in output_dirs:
+        augmentation(data_dir, data_dir + "_aug")
+        dir_rename(data_dir + "_aug", "tmp")
+        dir_rename("tmp", dataset_dir)
+    shutil.rmtree("tmp")
+    """
+    make_dataset_csv(["nogizaka_face"], "./train_data.csv")
 
