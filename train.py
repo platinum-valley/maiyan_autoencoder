@@ -147,7 +147,7 @@ def recog(args, model_params, image_dir_name, label_dict):
 
     # make network
     c, w, h = valid_dataset[0][0].size()
-    net = Autoencoder(args.label_num).to(device)
+    net = Autoencoder(valid_dataset.label_num() + 1).to(device)
     net.load_state_dict(torch.load(model_params))
 
     # make loss function and optimizer
@@ -173,20 +173,21 @@ def recog(args, model_params, image_dir_name, label_dict):
 
 
         running_loss += loss.item()
-        #print(input)
-        """
-        visible_image = (inputs[0].numpy() * 255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imshow("test1", visible_image)
-        visible_image = (outputs[0].numpy()*255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imshow("test2", visible_image)
-        cv2.waitKey(300)
-        """
+        
+        visible_image = (inputs[0].cpu().numpy() * 255).astype(np.uint8).transpose(1, 2, 0)
+        cv2.imwrite("input_img/" +  str(i) + ".jpg", visible_image)
+        #cv2.imshow("test1", visible_image)
+        visible_image = (outputs[0].cpu().numpy()*255).astype(np.uint8).transpose(1, 2, 0)
+        cv2.imwrite("output_img/" + str(i) + ".jpg", visible_image )
+        #cv2.imshow("test2", visible_image)
+        #cv2.waitKey(300)
+        
         epoch_loss = running_loss / dataset_sizes["valid"] * args.batch_size
 
 
 if __name__ == "__main__":
     args = get_argument()
-
+    """
     model_weights, loss_history, label_dict = main(args)
     torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_with_celeba.pth"))
     with open("label.dict.pkl", "wb") as f:
@@ -195,9 +196,9 @@ if __name__ == "__main__":
     for i, phase in enumerate(["train", "valid"]):
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-
+    """
     label_dict = {}
     with open("label.dict.pkl", "rb") as f:
         label_dict = pickle.load(f)
-    recog(args, "./weight.pth", "nogizaka_face", label_dict)
+    recog(args, "./weight_with_celeba.pth", "nogizaka_face", label_dict)
 
