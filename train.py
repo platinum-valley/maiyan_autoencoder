@@ -30,13 +30,14 @@ def get_argument():
     parser.add_argument("--embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
     parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
     parser.add_argument("--gpu", action="store_true", help="using gpu")
+    parser.add_argument("--model", help="loaded model path")
     args = parser.parse_args()
     return args
 
 def main(args):
     # make dataset
     trans = transforms.ToTensor()
-    train_dataset = face_train_Dataset("./nogizaka_face", "./data.csv", transform=trans)
+    train_dataset = face_train_Dataset("./nogizaka_face", "./train_data.csv", transform=trans)
     label_dict = train_dataset.get_label_dict()
     valid_dataset = face_train_Dataset("./nogi_face", "./valid_data.csv", transform=trans)
     valid_dataset.give_label_dict(label_dict)
@@ -51,11 +52,11 @@ def main(args):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         device = torch.device("cpu")
-    print(device)
+
     # make network
-    c, w, h = train_dataset[0][0].size()
-    net = Autoencoder(train_dataset.label_num() + 1).to(device)
-    #net.cuda()
+    net = Autoencoder(train_dataset.label_num()).to(device)
+    if args.model:
+        net.load_state_dict(torch.load(args.model))
 
     # make loss function and optimizer
     #criterion = nn.BCELoss().cuda
@@ -102,7 +103,7 @@ def main(args):
                 # forward
                 mu, var, outputs = net(inputs, label)
                 #loss = criterion(outputs, inputs)
-                loss = loss_func(inputs, outputs, mu, var)
+                loss = loss_func(inputs, outputs, mu, var, epoch)
                 # backward and optimize
                 if phase == "train":
                     loss.backward()
@@ -115,7 +116,7 @@ def main(args):
 
             print("{} loss {:.4f}".format(phase, epoch_loss))
 
-            if phase == "valid" and epoch_loss < best_loss:
+            if phase == "valid" and epoch_loss < best_loss and epoch + 1 == args.epoch :
                 best_model_wts = net.state_dict()
 
     elapsed_time = time.time() - start_time
@@ -124,16 +125,50 @@ def main(args):
     net.load_state_dict(best_model_wts)
     return net, loss_history,label_dict
 
-def loss_func(inputs, outputs, mu, var):
+def loss_func(inputs, outputs, mu, var, epoch):
     loss = nn.BCELoss(reduction="sum")
     entropy = loss(outputs, inputs)
+    std = var.mul(0.5).exp_()
+    eps = std.data.new(std.size()).normal_()
+    z = eps.mul(std).add_(mu)
+    z = torch.sum(torch.pow(z,2))
+    #z = 0
     kld = - 0.5 * torch.sum(1 + var - mu.pow(2) - var.exp())
-    return entropy + kld
+    return entropy + kld + z
+
+def generate(args, image_path, model_params, label_dict):
+    if args.gpu:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
+
+    transform = transforms.ToTensor()
+    image = transform(cv2.imread(image_path))
+    image = Variable(image).to(device)
+
+    net = Autoencoder(len(label_dict)).to(device)
+    net.load_state_dict(torch.load(model_params))
+    torch.set_grad_enabled(False)
+
+    mu, var = net.encode(image)
+    #mu = torch.tensor(np.zeros(200), dtype=torch.float).to(device)
+    #var = torch.tensor(np.zeros(200), dtype=torch.float).to(device)
+    for i in range(len(label_dict)):
+        label = np.zeros(len(label_dict))
+        label[i] = 1
+        label = Variable(torch.tensor([label], dtype=torch.float)).to(device)
+        outputs = net.generate(mu, var, label)
+        label_name = [key for key, value in label_dict.items() if value == i]
+        if label_name == []:
+            label_name[0] = "unk"
+        visible_image = (outputs[0].cpu().numpy()*255).astype(np.uint8).transpose(1, 2, 0)
+        cv2.imwrite("output_img/" + label_name[0] + ".jpg", visible_image )
+
 
 def recog(args, model_params, image_dir_name, label_dict):
 
     trans = transforms.ToTensor()
-    valid_dataset = face_train_Dataset(image_dir_name, "./data.csv", transform=trans)
+    valid_dataset = face_train_Dataset(image_dir_name, "./train_data.csv", transform=trans)
     valid_dataset.give_label_dict(label_dict)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=1)
     valid_size = len(valid_dataset)
@@ -187,18 +222,18 @@ def recog(args, model_params, image_dir_name, label_dict):
 
 if __name__ == "__main__":
     args = get_argument()
-    """
+    
     model_weights, loss_history, label_dict = main(args)
-    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_with_celeba.pth"))
+    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_aug.pth"))
     with open("label.dict.pkl", "wb") as f:
         pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
     training_history = np.zeros((2, args.epochs))
     for i, phase in enumerate(["train", "valid"]):
         training_history[i] = loss_history[phase]
     np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-    """
+    
     label_dict = {}
     with open("label.dict.pkl", "rb") as f:
         label_dict = pickle.load(f)
-    recog(args, "./weight_with_celeba.pth", "nogizaka_face", label_dict)
-
+    #recog(args, "./weight_aug.pth", "nogizaka_face", label_dict)
+    generate(args, "nogi_face/ikoma_2.jpg", "./weight_aug.pth", label_dict)

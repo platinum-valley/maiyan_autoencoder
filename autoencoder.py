@@ -15,10 +15,7 @@ class Autoencoder(nn.Module):
 
     def __init__(self, label_num):
         super(Autoencoder, self).__init__()
-        self.batch_size = 16
-        self.num_epoch = 10
         self.label_num = label_num
-        self.learning_rate = 20
 
         self.conv1 = nn.Sequential(
             nn.ZeroPad2d((1, 2, 1, 2)),
@@ -59,17 +56,17 @@ class Autoencoder(nn.Module):
         self.fc2 = nn.Linear(640, 2, bias=True)
 
         self.fc_mu = nn.Sequential(
-            nn.Linear(640, 400, bias=True),
+            nn.Linear(640, 200, bias=True),
             nn.ReLU()
         )
 
         self.fc_var = nn.Sequential(
-            nn.Linear(640, 400, bias=True),
+            nn.Linear(640, 200, bias=True),
             nn.ReLU()
         )
 
         self.emb_label = nn.Sequential(
-            nn.Linear(self.label_num, 400, bias=True),
+            nn.Linear(self.label_num, 200, bias=True),
             nn.ReLU()
         )
 
@@ -120,7 +117,7 @@ class Autoencoder(nn.Module):
         emb_label = self.emb_label(label)
         #print(mu, var)
         z = self.reparameterize(mu, var)
-        z = z + emb_label
+        z = torch.cat((z, emb_label), 1)
         decoded = self.fc2dec(z)
         decoded = self.fc1dec(decoded.view(decoded.size()[0], 10, 8, 8))
         decoded = self.conv4dec(decoded)
@@ -130,3 +127,26 @@ class Autoencoder(nn.Module):
         decoded = nn.Sigmoid()(decoded)
         return mu, var, decoded
 
+    def encode(self, x):
+        x = x.view(1, x.size()[0], x.size()[1], x.size()[2])
+        encoded = self.conv1(x)
+        encoded = self.conv2(encoded)
+        encoded = self.conv3(encoded)
+        encoded = self.conv4(encoded)
+        encoded = self.fc1(encoded).view(encoded.size()[0], -1)
+        mu = self.fc_mu(encoded)
+        var = self.fc_var(encoded)
+        return mu, var
+
+    def generate(self, mu, var, label):
+        z = self.reparameterize(mu, var).view(1, -1)
+        emb_label = self.emb_label(label)
+        z = torch.cat((z, emb_label), 1)
+        decoded = self.fc2dec(z)
+        decoded = self.fc1dec(decoded.view(decoded.size()[0], 10, 8, 8))
+        decoded = self.conv4dec(decoded)
+        decoded = self.conv3dec(decoded)
+        decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
+        decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
+        decoded = nn.Sigmoid()(decoded)
+        return decoded

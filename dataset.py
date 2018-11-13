@@ -49,7 +49,7 @@ class face_train_Dataset(Dataset):
     def __getitem__(self, idx):
         image_path = self.data.ix[idx, 0]
         label = self.data.ix[idx, 1]
-        label_onehot = np.zeros(len(self.label_dict) + 1)
+        label_onehot = np.zeros(len(self.label_dict))
         if not label in self.label_dict:
             label_onehot[-1] = 1
         else:
