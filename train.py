@@ -7,10 +7,12 @@ from torch.autograd import Variable
 from torchvision import models, datasets
 from torchvision import transforms
 from autoencoder import Autoencoder
+from gan import Discriminator
 from dataset import face_train_Dataset
 
 import numpy as np
 import os
+import sys
 import cv2
 import pickle
 import time
@@ -20,26 +22,33 @@ from pathlib import Path
 
 def get_argument():
     # get argument
-
     parser = argparse.ArgumentParser(description="Parameter for training of network ")
-    parser.add_argument("--batch_size", type=int, default=64, help="input batch size for training (default:16)")
-    parser.add_argument("--epochs", type=int, default=20, help="number of epoch to train (default:100)")
+    parser.add_argument("--batch_size", type=int, default=64, help="input batch size for training (default:64)")
+    parser.add_argument("--epochs", type=int, default=30, help="number of epoch to train (default:20)")
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
-    parser.add_argument("--embedding_dimension", type=int, default=6, help="dimension of embedded feature (default:6)")
     parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
     parser.add_argument("--gpu", action="store_true", help="using gpu")
-    parser.add_argument("--model", help="loaded model path")
+    parser.add_argument("--generator_model", help="loaded generator model path")
+    parser.add_argument("--discriminator_model", help="loaded discriminator model path")
+    parser.add_argument("--model_type", choices=["VAE", "VAEGAN"], default="VAE", help="model architecture")
+    parser.add_argument("--train_data", help="train dataset csv file")
+    parser.add_argument("--valid_data", help="valid dataset csv file")
+    parser.add_argument("--generate_image", help="generate image path")
     args = parser.parse_args()
     return args
 
 def main(args):
+    if not (args.train_data and args.valid_data):
+        print("must chose train_data and valid_data")
+        sys.exit()
+
     # make dataset
     trans = transforms.ToTensor()
-    train_dataset = face_train_Dataset("./nogizaka_face", "./train_data.csv", transform=trans)
+    train_dataset = face_train_Dataset("./nogizaka_face", args.train_data, transform=trans)
     label_dict = train_dataset.get_label_dict()
-    valid_dataset = face_train_Dataset("./nogi_face", "./valid_data.csv", transform=trans)
+    valid_dataset = face_train_Dataset("./nogi_face", args.valid_data, transform=trans)
     valid_dataset.give_label_dict(label_dict)
     train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
@@ -54,18 +63,30 @@ def main(args):
         device = torch.device("cpu")
 
     # make network
-    net = Autoencoder(train_dataset.label_num()).to(device)
-    if args.model:
-        net.load_state_dict(torch.load(args.model))
+    if args.model_type == "VAE":
+        net = Autoencoder(train_dataset.label_num()).to(device)
+        optimizer = optim.Adam(net.parameters(), lr=arg.lr, weight_decay=args.weight_decay)
+        best_model_wts = net.state_dict()
+        nest_loss =1e10
+        if args.generator_model:
+            net.load_state_dict(torch.load(args.generator_model))
+
+    elif args.model_type == "VAEGAN":
+        generator = Autoencoder(train_dataset.label_num()).to(device)
+        discriminator = Discriminator().to(device)
+        generator_optimizer = optim.Adam(generator.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        discriminator_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        best_generator_wts = generator.state_dict()
+        best_discriminator_wts = discriminator.state_dict()
+        best_generator_loss = 1e10
+        best_discriminator_loss = 1e10
+        if args.generator_model:
+            generator.load_state_dict(torch.load(args.generator_model))
+        if args.discriminator_model:
+            discriminator.load_state_dict(torch.load(args.discriminator_model))
 
     # make loss function and optimizer
-    #criterion = nn.BCELoss().cuda
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
-    # initialize model state
-    best_model_wts = net.state_dict()
-    best_loss = 0.0
+    criterion = nn.BCELoss(reduction="sum")
 
     # initialize loss
     loss_history = {"train": [], "valid": []}
@@ -77,12 +98,23 @@ def main(args):
 
         for phase in ["train", "valid"]:
             if phase == "train":
-                net.train(True)
+                if args.model_type == "VAE":
+                    net.train(True)
+                elif args.model_type == "VAEGAN":
+                    generator.train(True)
+                    discriminator.train(True)
             else:
-                net.train(False)
+                if args.model_type == "VAE":
+                    net.train(False)
+                elif args.model_type == "VAEGAN":
+                    generator.train(False)
+                    discriminator.train(False)
+
 
             # initialize running loss
             running_loss = 0.0
+            generator_running_loss = 0.0
+            discriminator_running_loss = 0.0
 
             for i, data in enumerate(loaders[phase]):
                 inputs, label = data
@@ -98,52 +130,98 @@ def main(args):
                     torch.set_grad_enabled(False)
 
                 # zero gradients
-                optimizer.zero_grad()
+                if args.model_type == "VAE":
+                    optimizer.zero_grad()
+                    mu, var, outputs = net(inputs, label)
+                    loss = loss_func(inputs, outputs, mu, var)
+                    if phase == "train":
+                        loss.backward()
+                        optimizer.step()
+                    running_loss += loss.item()
 
-                # forward
-                mu, var, outputs = net(inputs, label)
-                #loss = criterion(outputs, inputs)
-                loss = loss_func(inputs, outputs, mu, var, epoch)
-                # backward and optimize
-                if phase == "train":
-                    loss.backward()
-                    optimizer.step()
+                elif args.model_type == "VAEGAN":
+                    real_label = Variable(torch.ones((inputs.size()[0], 1), dtype=torch.float)).to(device)
+                    fake_label = Variable(torch.zeros((inputs.size()[0], 1), dtype=torch.float)).to(device)
+                    discriminator_optimizer.zero_grad()
 
-                running_loss += loss.item()
+                    real_pred = discriminator(inputs)
+                    real_loss = criterion(real_pred, real_label)
 
-            epoch_loss = running_loss / dataset_sizes[phase] * args.batch_size
-            loss_history[phase].append(epoch_loss)
+                    mu, var, outputs = generator(inputs, label)
+                    fake_pred = discriminator(outputs.detach())
+                    fake_loss = criterion(fake_pred, fake_label)
 
-            print("{} loss {:.4f}".format(phase, epoch_loss))
+                    discriminator_loss = real_loss + fake_loss
+                    if phase == "train":
+                        discriminator_loss.backward()
+                        discriminator_optimizer.step()
 
-            if phase == "valid" and epoch_loss < best_loss and epoch + 1 == args.epoch :
-                best_model_wts = net.state_dict()
+                    generator_optimizer.zero_grad()
+                    generator_loss = criterion(discriminator(outputs), real_label) + loss_func(inputs, outputs, mu, var)
+                    if phase == "train":
+                        generator_loss.backward()
+                        generator_optimizer.step()
+
+                    discriminator_running_loss += discriminator_loss.item()
+                    generator_running_loss += generator_loss.item()
+
+            if args.model_type == "VAE":
+                epoch_loss = running_loss / dataset_sizes[phase] * args.batch_size
+                loss_history[phase].append(epoch_loss)
+
+                print("{} loss {:.4f}".format(phase, epoch_loss))
+                if phase == "valid" and epoch_loss < best_loss :
+                    best_model_wts = net.state_dict()
+                    best_loss = epoch_loss
+
+
+            elif args.model_type == "VAEGAN":
+                epoch_generator_loss = generator_running_loss / dataset_sizes[phase] * args.batch_size
+                epoch_discriminator_loss = discriminator_running_loss /dataset_sizes[phase] * args.batch_size
+
+                print("{} generator loss {:.4f}".format(phase, epoch_generator_loss))
+                print("{} discriminator loss {:.4f}".format(phase, epoch_discriminator_loss))
+                if phase == "valid" and epoch_generator_loss < best_generator_loss:
+                    best_generator_wts = generator.state_dict()
+                    best_generator_loss = epoch_generator_loss
+                if phase == "valid" and epoch_discriminator_loss < best_discriminator_loss:
+                    best_discriminator_wts = discriminator.state_dict()
+                    best_generator_loss = epoch_discriminator_loss
 
     elapsed_time = time.time() - start_time
     print("training complete in {:.0f}s".format(elapsed_time))
+    if args.model_type == "VAE":
+        net.load_state_dict(best_model_wts)
+        return net, loss_history, label_dict
 
-    net.load_state_dict(best_model_wts)
-    return net, loss_history,label_dict
+    elif args.model_type == "VAEGAN":
+        generator.load_state_dict(best_generator_wts)
+        discriminator.load_state_dict(best_discriminator_wts)
+        return (generator, discriminator), loss_history, label_dict
 
-def loss_func(inputs, outputs, mu, var, epoch):
+def loss_func(inputs, outputs, mu, var):
     loss = nn.BCELoss(reduction="sum")
     entropy = loss(outputs, inputs)
     std = var.mul(0.5).exp_()
     eps = std.data.new(std.size()).normal_()
     z = eps.mul(std).add_(mu)
     z = torch.sum(torch.pow(z,2))
-    #z = 0
     kld = - 0.5 * torch.sum(1 + var - mu.pow(2) - var.exp())
     return entropy + kld + z
 
-def generate(args, image_path, model_params, label_dict):
+def generate(args, model_params, label_dict):
     if args.gpu:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         device = torch.device("cpu")
 
+    if not args.generate_image:
+        print("must chose generate_image")
+        sys.exit()
+
+
     transform = transforms.ToTensor()
-    image = transform(cv2.imread(image_path))
+    image = transform(cv2.imread(args.generate_image))
     image = Variable(image).to(device)
 
     net = Autoencoder(len(label_dict)).to(device)
@@ -151,8 +229,6 @@ def generate(args, image_path, model_params, label_dict):
     torch.set_grad_enabled(False)
 
     mu, var = net.encode(image)
-    #mu = torch.tensor(np.zeros(200), dtype=torch.float).to(device)
-    #var = torch.tensor(np.zeros(200), dtype=torch.float).to(device)
     for i in range(len(label_dict)):
         label = np.zeros(len(label_dict))
         label[i] = 1
@@ -222,18 +298,21 @@ def recog(args, model_params, image_dir_name, label_dict):
 
 if __name__ == "__main__":
     args = get_argument()
-    
+    """
     model_weights, loss_history, label_dict = main(args)
-    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_aug.pth"))
+    if args.model_type == "VAE":
+        torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_aug.pth"))
+    elif args.model_type == "VAEGAN":
+        torch.save(model_weights[0].state_dict(), Path(args.outdir_path).joinpath("weight_generator.pth"))
+        torch.save(model_weights[1].state_dict(), Path(args.outdir_path).joinpath("weight_discriminator.pth"))
     with open("label.dict.pkl", "wb") as f:
         pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
-    training_history = np.zeros((2, args.epochs))
-    for i, phase in enumerate(["train", "valid"]):
-        training_history[i] = loss_history[phase]
-    np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-    
+    #training_history = np.zeros((2, args.epochs))
+    #for i, phase in enumerate(["train", "valid"]):
+    #    training_history[i] = loss_history[phase]
+    #np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
+    """
     label_dict = {}
     with open("label.dict.pkl", "rb") as f:
         label_dict = pickle.load(f)
-    #recog(args, "./weight_aug.pth", "nogizaka_face", label_dict)
-    generate(args, "nogi_face/ikoma_2.jpg", "./weight_aug.pth", label_dict)
+    generate(args, "./weight_generator.pth", label_dict)
