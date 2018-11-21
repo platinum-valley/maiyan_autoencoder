@@ -12,14 +12,12 @@ class face_train_Dataset(Dataset):
 
     """
 
-    def __init__(self, image_dir, csv_path, transform=None):
+    def __init__(self, csv_path, transform=None):
         """
         initiate function
-        :param image_dir: image directory
         :param csv_path: anotated data csvfile
         :param transform: itarational transformer
         """
-        self.image_dir = image_dir
         self.csv_path = csv_path
         self.transform = transform
         self.data = pd.read_csv(self.csv_path, header=None)

@@ -92,13 +92,6 @@ class Autoencoder(nn.Module):
             nn.ConvTranspose2d(32, 3, kernel_size=5, stride=2)
         )
 
-        self.decoder = nn.Sequential(
-            self.fc2,
-            self.conv4dec,
-            self.conv3dec,
-            self.conv2dec,
-            self.conv1dec
-        )
 
     def reparameterize(self, mu, var):
         std = var.mul(0.5).exp_()
@@ -150,3 +143,4 @@ class Autoencoder(nn.Module):
         decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
         decoded = nn.Sigmoid()(decoded)
         return decoded
+

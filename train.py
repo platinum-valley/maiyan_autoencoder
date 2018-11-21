@@ -7,6 +7,7 @@ from torch.autograd import Variable
 from torchvision import models, datasets
 from torchvision import transforms
 from autoencoder import Autoencoder
+from classifier import Classifier
 from gan import Discriminator
 from dataset import face_train_Dataset
 
@@ -33,6 +34,7 @@ def get_argument():
     parser.add_argument("--generator_model", help="loaded generator model path")
     parser.add_argument("--discriminator_model", help="loaded discriminator model path")
     parser.add_argument("--model_type", choices=["VAE", "VAEGAN"], default="VAE", help="model architecture")
+    parser.add_argument("--classifier_model", help="loaded classifier model path")
     parser.add_argument("--train_data", help="train dataset csv file")
     parser.add_argument("--valid_data", help="valid dataset csv file")
     parser.add_argument("--generate_image", help="generate image path")
@@ -46,12 +48,12 @@ def main(args):
 
     # make dataset
     trans = transforms.ToTensor()
-    train_dataset = face_train_Dataset("./nogizaka_face", args.train_data, transform=trans)
+    train_dataset = face_train_Dataset(args.train_data, transform=trans)
     label_dict = train_dataset.get_label_dict()
-    valid_dataset = face_train_Dataset("./nogi_face", args.valid_data, transform=trans)
+    valid_dataset = face_train_Dataset(args.valid_data, transform=trans)
     valid_dataset.give_label_dict(label_dict)
-    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
-    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
+    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
     train_size = len(train_dataset)
     valid_size = len(valid_dataset)
     loaders = {"train": train_loader, "valid": valid_loader}
@@ -296,6 +298,83 @@ def recog(args, model_params, image_dir_name, label_dict):
         epoch_loss = running_loss / dataset_sizes["valid"] * args.batch_size
 
 
+def train_classifier(args):
+    if not (args.train_data and args.valid_data):
+        print("must chose train_data and valid_data")
+        sys.exit()
+
+    trans = transforms.ToTensor()
+    train_dataset = face_train_Dataset(args.train_data, transform=trans)
+    label_dict = train_dataset.get_label_dict()
+    valid_dataset = face_train_Dataset(args.valid_data, transform=trans)
+    valid_dataset.give_label_dict(label_dict)
+    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
+    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
+    loaders = {"train": train_loader, "valid": valid_loader}
+    dataset_sizes = {"train":len(train_dataset), "valid":len(valid_dataset)}
+
+    if args.gpu:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    else:
+        device = torch.device("cpu")
+
+    classifier = Classifier(len(label_dict)).to(device).float()
+    optimizer = optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    best_model_wts = classifier.state_dict()
+    best_loss = 1e10
+    if args.classifier_model:
+        classifier.load_state_dict(torch.load(args.classifier_model))
+    criterion = nn.CrossEntropyLoss(reduction="sum")
+    start_time = time.time()
+    for epoch in range(args.epochs):
+        print("epoch {}".format(epoch+1))
+
+        for phase in ["train", "valid"]:
+            if phase == "train":
+                classifier.train(True)
+            else:
+                classifier.train(False)
+
+            running_loss = 0.0
+            running_acc = 0
+            for i, data in enumerate(loaders[phase]):
+                inputs, label = data
+                inputs = Variable(inputs).to(device)
+                label = Variable(label).to(device)
+                if phase == "train":
+                    torch.set_grad_enabled(True)
+                else:
+                    torch.set_grad_enabled(False)
+
+                optimizer.zero_grad()
+                pred = classifier(inputs)
+                #print(pred)
+                print("pred {}".format(torch.max(pred, 1)[1]))
+                print("label {}".format(torch.max(label, 1)[1]))
+                l1_criterion = nn.L1Loss(size_average=False)
+                reg_loss = 0
+                for param in classifier.parameters():
+                    reg_loss += 11_criterion(param)
+
+                loss = criterion(pred, torch.max(label, 1)[1]) + reg_loss * reg_loss
+                if phase == "train":
+                    loss.backward()
+                    optimizer.step()
+                running_loss += loss.item()
+                running_acc += (torch.max(pred, 1)[1]==torch.max(label, 1)[1]).sum().item()
+            epoch_loss = running_loss / dataset_sizes[phase] * args.batch_size
+            epoch_acc = running_acc / dataset_sizes[phase]
+            print("{} loss {:.4f}".format(phase, epoch_loss))
+            print("{} acc {:.6f}".format(phase, epoch_acc))
+            if phase == "valid" and epoch_loss < best_loss:
+                best_model_wts = classifier.state_dict()
+                best_loss = epoch_loss
+
+    elapsed_time = time.time() - start_time
+    print("training_complete in {:.0f}".format(elapsed_time))
+    classifier.load_state_dict(best_model_wts)
+    return classifier, label_dict
+
 if __name__ == "__main__":
     args = get_argument()
     """
@@ -311,8 +390,11 @@ if __name__ == "__main__":
     #for i, phase in enumerate(["train", "valid"]):
     #    training_history[i] = loss_history[phase]
     #np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-    """
+    
     label_dict = {}
     with open("label.dict.pkl", "rb") as f:
         label_dict = pickle.load(f)
     generate(args, "./weight_generator.pth", label_dict)
+    """
+    model_weights, label_dict = train_classifier(args)
+    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_classifier.pth"))
