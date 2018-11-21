@@ -62,6 +62,12 @@ def add_noise(image):
     noise = np.random.normal(0, 0.1, (256, 256, 3)) * 255
     return image + noise
 
+def make_lower(image):
+    image = cv2.resize(image, (32, 32))
+    image = cv2.resize(image, (256, 256))
+    return image
+
+
 def augmentation(input_dir, output_dir):
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
@@ -89,5 +95,5 @@ if __name__ == "__main__":
         dir_rename("tmp", dataset_dir)
     shutil.rmtree("tmp")
     """
-    make_dataset_csv(["nogizaka_face"], "./train_data.csv")
-
+    #make_dataset_csv(["nogizaka_face"], "./train_data.csv")
+    make_lower(cv2.imread("nogi_face/nishino_1.jpg"))
