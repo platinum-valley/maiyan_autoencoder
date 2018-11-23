@@ -45,6 +45,14 @@ def dir_rename(image_dir, output_dir):
     for i, image_file in enumerate(image_list):
         os.rename(image_dir + "/" + image_file, output_dir + "/" + image_file.split("_")[0] + "_" + str(i) + ".jpg")
 
+def make_resolution_csv(higher_dir, lower_dir, output_csv):
+    csv_list = []
+    image_list = os.listdir(higher_dir)
+    for image_file in image_list:
+        csv_list.append((lower_dir + "/" + image_file, higher_dir + "/" + image_file))
+    df = pd.DataFrame(csv_list)
+    df.to_csv(output_csv, index=False, header=False)
+
 def make_dataset_csv(image_dir_list, output_csv):
     csv_list = []
     for image_dir in image_dir_list:
@@ -73,11 +81,14 @@ def augmentation(input_dir, output_dir):
         os.mkdir(output_dir)
     for img in os.listdir(input_dir):
         input_img = cv2.imread(input_dir + "/" + img)
-        fliped = flip_image(input_img)
-        noisy = add_noise(input_img)
-        cv2.imwrite(output_dir + "/" + img, input_img)
-        cv2.imwrite(output_dir + "/" + img.split("_")[0] + "_flip_" + img.split("_")[1], fliped)
-        cv2.imwrite(output_dir + "/" + img.split("_")[0] + "_noisy_" + img.split("_")[1], noisy)
+        print(img)
+        lower = make_lower(input_img)
+        cv2.imwrite(output_dir + "/" + img, lower)
+        #fliped = flip_image(input_img)
+        #noisy = add_noise(input_img)
+        #cv2.imwrite(output_dir + "/" + img, input_img)
+        #cv2.imwrite(output_dir + "/" + img.split("_")[0] + "_flip_" + img.split("_")[1], fliped)
+        #cv2.imwrite(output_dir + "/" + img.split("_")[0] + "_noisy_" + img.split("_")[1], noisy)
 
 if __name__ == "__main__":
     input_dirs = ["shiraishi_mai", "saito_asuka", "akimoto_manatsu", "hori_miona", "hoshino_minami", "ikoma_rina", "yamashita_mizuki", "yoda_yuki","ikuta_erika", "matsumura_sayuri", "nishino_nanase"]
@@ -89,11 +100,13 @@ if __name__ == "__main__":
     if os.path.exists("tmp"):
         shutil.rmtree("tmp")
     os.mkdir("tmp")
+    """
+    output_dirs = ["celeba_face"]
+    """
     for data_dir in output_dirs:
-        augmentation(data_dir, data_dir + "_aug")
-        dir_rename(data_dir + "_aug", "tmp")
-        dir_rename("tmp", dataset_dir)
+        augmentation(data_dir, data_dir + "_lower")
+        dir_rename(data_dir + "_lower", "tmp")
+        dir_rename("tmp", data_dir)
     shutil.rmtree("tmp")
     """
-    #make_dataset_csv(["nogizaka_face"], "./train_data.csv")
-    make_lower(cv2.imread("nogi_face/nishino_1.jpg"))
+    make_resolution_csv("celeba_face", "celeba_face_lower", "./train_resolution_data.csv")

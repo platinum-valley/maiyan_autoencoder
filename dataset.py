@@ -6,7 +6,7 @@ import torch
 
 from torch.utils.data import Dataset
 
-class face_train_Dataset(Dataset):
+class FaceDataset(Dataset):
     """
     dataset
 
@@ -57,3 +57,16 @@ class face_train_Dataset(Dataset):
         if self.transform:
             image = self.transform(input_image)
         return (image, label_onehot)
+
+class FaceResolutorDataset(FaceDataset):
+
+    def __getitem__(self, idx):
+        higher_path = self.data.ix[idx, 0]
+        lower_path = self.data.ix[idx, 1]
+        higher_image = cv2.imread(higher_path)
+        lower_image = cv2.imread(lower_path)
+        if self.transform:
+            higher_image = self.transform(higher_image)
+            lower_image = self.transform(lower_image)
+        return(lower_image, higher_image)
+
