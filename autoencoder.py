@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import torch
 from torch import nn
@@ -5,11 +6,6 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-
-class Flatten(nn.Module):
-    def forward(self, x):
-        x = x.view(x.size()[0], -1)
-        return x
 
 class Autoencoder(nn.Module):
 
@@ -77,20 +73,39 @@ class Autoencoder(nn.Module):
             nn.ReLU()
         )
         self.conv4dec = nn.Sequential(
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.ReLU(),
             nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
+
         )
         self.conv3dec = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.ReLU(),
             nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
             nn.ReLU()
         )
         self.conv2dec = nn.Sequential(
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
             nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2),
             nn.ReLU()
         )
         self.conv1dec = nn.Sequential(
-            nn.ConvTranspose2d(32, 3, kernel_size=5, stride=2)
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(32, 3, kernel_size=5, stride=2),
+            nn.Sigmoid()
         )
+
 
 
     def reparameterize(self, mu, var):
@@ -108,7 +123,6 @@ class Autoencoder(nn.Module):
         mu = self.fc_mu(encoded)
         var = self.fc_var(encoded)
         emb_label = self.emb_label(label)
-        #print(mu, var)
         z = self.reparameterize(mu, var)
         z = torch.cat((z, emb_label), 1)
         decoded = self.fc2dec(z)
@@ -117,7 +131,6 @@ class Autoencoder(nn.Module):
         decoded = self.conv3dec(decoded)
         decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
         decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
-        decoded = nn.Sigmoid()(decoded)
         return mu, var, decoded
 
     def encode(self, x):
@@ -141,6 +154,5 @@ class Autoencoder(nn.Module):
         decoded = self.conv3dec(decoded)
         decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
         decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
-        decoded = nn.Sigmoid()(decoded)
         return decoded
 

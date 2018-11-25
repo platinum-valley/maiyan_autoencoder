@@ -33,6 +33,8 @@ def get_argument():
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
     parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
     parser.add_argument("--gpu", action="store_true", help="using gpu")
+    parser.add_argument("--task", type=str, choices=["style_transfer", "classify", "resolute"], default="",
+                        help="choice training task")
     parser.add_argument("--generator_model", help="loaded generator model path")
     parser.add_argument("--discriminator_model", help="loaded discriminator model path")
     parser.add_argument("--model_type", choices=["VAE", "VAEGAN"], default="VAE", help="model architecture")
@@ -40,6 +42,7 @@ def get_argument():
     parser.add_argument("--resolutor_model", help="loaded resolutor model path")
     parser.add_argument("--train_data", help="train dataset csv file")
     parser.add_argument("--valid_data", help="valid dataset csv file")
+    parser.add_argument("--resolute_data", help="resolute dataset csv file")
     parser.add_argument("--generate_image", help="generate image path")
     args = parser.parse_args()
     return args
@@ -85,9 +88,9 @@ def train_style_transfer(args):
         best_discriminator_wts = discriminator.state_dict()
         best_generator_loss = 1e10
         best_discriminator_loss = 1e10
-        if args.generator_model:
+        if args.generator_model and os.path.exists(args.generator_model):
             generator.load_state_dict(torch.load(args.generator_model))
-        if args.discriminator_model:
+        if args.discriminator_model and os.path.exists(args.discriminator_model):
             discriminator.load_state_dict(torch.load(args.discriminator_model))
 
     # make loss function and optimizer
@@ -202,7 +205,7 @@ def train_style_transfer(args):
     elif args.model_type == "VAEGAN":
         generator.load_state_dict(best_generator_wts)
         discriminator.load_state_dict(best_discriminator_wts)
-        return (generator, discriminator), loss_history, label_dict
+        return (generator, discriminator), label_dict
 
 def loss_func(inputs, outputs, mu, var):
     loss = nn.BCELoss(reduction="sum")
@@ -325,7 +328,7 @@ def train_classifier(args):
     optimizer = optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     best_model_wts = classifier.state_dict()
     best_loss = 1e10
-    if args.classifier_model:
+    if args.classifier_model and os.path.exists(args.classifier_model):
         classifier.load_state_dict(torch.load(args.classifier_model))
     criterion = nn.CrossEntropyLoss(reduction="sum")
     start_time = time.time()
@@ -398,7 +401,7 @@ def train_resolutor(args):
     optimizer = optim.Adam(resolutor.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     best_model_wts = resolutor.state_dict()
     best_loss = 1e10
-    if args.resolutor_model:
+    if args.resolutor_model and os.path.exists(args.resolutor_model):
         resolutor.load_state_dict(torch.load(args.resolutor_model))
     criterion = nn.BCELoss(reduction="sum")
     start_time = time.time()
@@ -442,8 +445,8 @@ def resolute(args):
         sys.exit()
 
     trans = transforms.ToTensor()
-    resolute_dataset = FaceResoluteDataset(args.resolute_data, transform=trans)
-    resolute_loader = data_utils.DataLoader(resolute_dataset, batch_size=1, shuffle=True, num_worker=1)
+    resolute_dataset = FaceResolutorDataset(args.resolute_data, transform=trans)
+    resolute_loader = data_utils.DataLoader(resolute_dataset, batch_size=1, shuffle=True, num_workers=1)
 
     if args.gpu:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -454,18 +457,43 @@ def resolute(args):
         sys.exit()
 
     resolutor = Resolutor().to(device)
-    resolutor.load_state_dict(torch_load(args.resolutor_model))
+    resolutor.load_state_dict(torch.load(args.resolutor_model))
     torch.set_grad_enabled(False)
-    for i, data in enumerate(resolutor_loader):
+    for i, data in enumerate(resolute_loader):
         inputs, outputs = data
         inputs = Variable(inputs).to(device)
         pred = resolutor(inputs)
         visible_image = (outputs[0].cpu().numpy()*255).astype(np.uint8).transpose(1,2,0)
-        cv2.imwrite("output_img/{}.jpg".format(str(i).zfill(8)))
+        cv2.imwrite("output_img/{}.jpg".format(str(i).zfill(8)), visible_image)
 
 
 if __name__ == "__main__":
     args = get_argument()
+    with open("label.dict.pkl", "rb") as f:
+        label_dict = pickle.load(f)
+    generate(args, "./weight_generator2.pth", label_dict)
+    """
+    if args.task == "style_transfer":
+        model_weights, label_dict = train_style_transfer(args)
+        if args.model_type == "VAE":
+            torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weights_aug.pth"))
+        else:
+            generator_weights, discriminator_weights = model_weights
+            torch.save(generator_weights.state_dict(), Path(args.outdir_path).joinpath(args.generator_model))
+            torch.save(discriminator_weights.state_dict(), Path(args.outdir_path).joinpath(args.discriminator_model))
+        with open("label.dict.pkl", "wb")as f:
+            pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
+    elif args.task == "classify":
+        model_weights, label_dict = train_classifier(args)
+        torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath(args.classifier_model))
+    elif args.task == "resolute":
+        model_weights = train_resolutor(args)
+        torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath(args.resolutor_model))
+    else :
+        print("must chose task (style_transfer, classify, resolute)")
+        sys.exit()
+
+    """
     """
     model_weights, loss_history, label_dict = train_style_transfer(args)
     if args.model_type == "VAE":
@@ -489,5 +517,6 @@ if __name__ == "__main__":
     model_weights, label_dict = train_classifier(args)
     torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_classifier.pth"))
     """
+    """
     model_weights = train_resolutor(args)
-    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_resolutor.pth"))
+    """
