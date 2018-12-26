@@ -32,4 +32,4 @@ discriminatorの損失関数は識別結果のBCEである。
 
 generator(VAE)の損失関数に生成画像をdiscriminatorが入力画像と識別するかのBCEを加えた。
 
-
+![arch](https://github.com/platinum-valley/nogi_maker/blob/master/architecture.png "achitecuture")
