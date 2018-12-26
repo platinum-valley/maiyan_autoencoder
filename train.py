@@ -7,6 +7,7 @@ from torch.autograd import Variable
 from torchvision import models, datasets
 from torchvision import transforms
 from autoencoder import Autoencoder
+from generate import generate
 from classifier import Classifier
 from gan import Discriminator
 from dataset import FaceDataset
@@ -31,10 +32,11 @@ def get_argument():
     parser.add_argument("--lr", type=float, default=0.001, help="initial learning rate for training (default:0.001)")
     parser.add_argument("--weight_decay", type=float, default=0.0, help="weight decay (default:0.0)")
     parser.add_argument("--dropout_ratio", type=float, default=0.0, help="dropout ratio (default:0.0)")
-    parser.add_argument("--outdir_path", type=str, default="./", help="directory path of outputs")
+    parser.add_argument("--output_dir", type=str, default="output_img", help="directory path of outputs")
     parser.add_argument("--gpu", action="store_true", help="using gpu")
     parser.add_argument("--task", type=str, choices=["style_transfer", "classify", "resolute"], default="",
                         help="choice training task")
+    parser.add_argument("--generate_mode", action="store_true", help="generate image which marge style image and label")
     parser.add_argument("--generator_model", help="loaded generator model path")
     parser.add_argument("--discriminator_model", help="loaded discriminator model path")
     parser.add_argument("--model_type", choices=["VAE", "VAEGAN"], default="VAE", help="model architecture")
@@ -43,7 +45,7 @@ def get_argument():
     parser.add_argument("--train_data", help="train dataset csv file")
     parser.add_argument("--valid_data", help="valid dataset csv file")
     parser.add_argument("--resolute_data", help="resolute dataset csv file")
-    parser.add_argument("--generate_image", help="generate image path")
+    parser.add_argument("--style_image", help="generate image path")
     args = parser.parse_args()
     return args
 
@@ -227,93 +229,6 @@ def loss_func(inputs, outputs, mu, var):
     kld = - 0.5 * torch.sum(1 + var - mu.pow(2) - var.exp())
     return entropy + kld + z
 
-def generate(args, model_params, label_dict):
-    if args.gpu:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device("cpu")
-
-    if not args.generate_image:
-        print("must chose generate_image")
-        sys.exit()
-
-
-    transform = transforms.ToTensor()
-    image = transform(cv2.imread(args.generate_image))
-    image = Variable(image).to(device)
-
-    net = Autoencoder(len(label_dict)).to(device)
-    net.load_state_dict(torch.load(model_params))
-    torch.set_grad_enabled(False)
-
-    mu, var = net.encode(image)
-    for i in range(len(label_dict)):
-        label = np.zeros(len(label_dict))
-        label[i] = 1
-        label = Variable(torch.tensor([label], dtype=torch.float)).to(device)
-        outputs = net.generate(mu, var, label)
-        label_name = [key for key, value in label_dict.items() if value == i]
-        if label_name == []:
-            label_name[0] = "unk"
-        visible_image = (outputs[0].cpu().numpy()*255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imwrite("output_img_VAEGAN/" + label_name[0] + ".jpg", visible_image )
-
-
-def recog(args, model_params, image_dir_name, label_dict):
-
-    trans = transforms.ToTensor()
-    valid_dataset = FaceDataset(image_dir_name, "./train_data.csv", transform=trans)
-    valid_dataset.give_label_dict(label_dict)
-    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=1, shuffle=True, num_workers=1)
-    valid_size = len(valid_dataset)
-    loaders = {"valid": valid_loader}
-    dataset_sizes = {"valid": valid_size}
-
-    if args.gpu:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device("cpu")
-
-    # make network
-    c, w, h = valid_dataset[0][0].size()
-    net = Autoencoder(valid_dataset.label_num() + 1).to(device)
-    net.load_state_dict(torch.load(model_params))
-
-    # make loss function and optimizer
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
-    running_loss = 0.0
-    for i, data in enumerate(loaders["valid"]):
-
-        inputs, label = data
-
-        inputs = Variable(inputs).to(device)
-        label = Variable(label).to(device)
-        torch.set_grad_enabled(False)
-
-        # zero gradients
-        optimizer.zero_grad()
-
-        # forward
-        mu, var, outputs = net(inputs, label)
-        #loss = criterion(outputs, inputs)
-        loss = loss_func(inputs, outputs, mu, var)
-
-
-        running_loss += loss.item()
-        
-        visible_image = (inputs[0].cpu().numpy() * 255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imwrite("input_img/" +  str(i) + ".jpg", visible_image)
-        #cv2.imshow("test1", visible_image)
-        visible_image = (outputs[0].cpu().numpy()*255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imwrite("output_img/" + str(i) + ".jpg", visible_image )
-        #cv2.imshow("test2", visible_image)
-        #cv2.waitKey(300)
-        
-        epoch_loss = running_loss / dataset_sizes["valid"] * args.batch_size
-
-
 def train_classifier(args):
     if not (args.train_data and args.valid_data):
         print("must chose train_data and valid_data")
@@ -476,53 +391,27 @@ def resolute(args):
 
 if __name__ == "__main__":
     args = get_argument()
-    with open("label.dict.pkl", "rb") as f:
-        label_dict = pickle.load(f)
-    generate(args,args.generator_model, label_dict)
-    """
-    if args.task == "style_transfer":
-        model_weights, label_dict = train_style_transfer(args)
-        if args.model_type == "VAE":
-            torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weights_aug.pth"))
-        else:
-            generator_weights, discriminator_weights = model_weights
-            torch.save(generator_weights.state_dict(), Path(args.outdir_path).joinpath(args.generator_model))
-            torch.save(discriminator_weights.state_dict(), Path(args.outdir_path).joinpath(args.discriminator_model))
-        with open("label.dict.pkl", "wb")as f:
-            pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
-    elif args.task == "classify":
-        model_weights, label_dict = train_classifier(args)
-        torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath(args.classifier_model))
-    elif args.task == "resolute":
-        model_weights = train_resolutor(args)
-        torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath(args.resolutor_model))
-    else :
-        print("must chose task (style_transfer, classify, resolute)")
-        sys.exit()
-    """
-    """
-    model_weights, loss_history, label_dict = train_style_transfer(args)
-    if args.model_type == "VAE":
-        torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_aug.pth"))
-    elif args.model_type == "VAEGAN":
-        torch.save(model_weights[0].state_dict(), Path(args.outdir_path).joinpath("weight_generator.pth"))
-        torch.save(model_weights[1].state_dict(), Path(args.outdir_path).joinpath("weight_discriminator.pth"))
-    with open("label.dict.pkl", "wb") as f:
-        pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
-    #training_history = np.zeros((2, args.epochs))
-    #for i, phase in enumerate(["train", "valid"]):
-    #    training_history[i] = loss_history[phase]
-    #np.save(Path(args.outdir_path).joinpath("training_history_{}.npy".format(datetime.date.today())), training_history)
-    
-    label_dict = {}
-    with open("label.dict.pkl", "rb") as f:
-        label_dict = pickle.load(f)
-    generate(args, "./weight_generator.pth", label_dict)
-    """
-    """
-    model_weights, label_dict = train_classifier(args)
-    torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weight_classifier.pth"))
-    """
-    """
-    model_weights = train_resolutor(args)
-    """
+    if args.generate_mode:
+        with open("label.dict.pkl", "rb") as f:
+            label_dict = pickle.load(f)
+        generate(args,args.generator_model, label_dict)
+    else:
+        if args.task == "style_transfer":
+            model_weights, label_dict = train_style_transfer(args)
+            if args.model_type == "VAE":
+                torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath("weights_aug.pth"))
+            else:
+                generator_weights, discriminator_weights = model_weights
+                torch.save(generator_weights.state_dict(), Path(args.outdir_path).joinpath(args.generator_model))
+                torch.save(discriminator_weights.state_dict(), Path(args.outdir_path).joinpath(args.discriminator_model))
+            with open("label.dict.pkl", "wb")as f:
+                pickle.dump(label_dict, f, pickle.HIGHEST_PROTOCOL)
+        elif args.task == "classify":
+            model_weights, label_dict = train_classifier(args)
+            torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath(args.classifier_model))
+        elif args.task == "resolute":
+            model_weights = train_resolutor(args)
+            torch.save(model_weights.state_dict(), Path(args.outdir_path).joinpath(args.resolutor_model))
+        else :
+            print("must chose task (style_transfer, classify, resolute)")
+            sys.exit()
