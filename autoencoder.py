@@ -15,37 +15,41 @@ class Autoencoder(nn.Module):
 
         self.conv1 = nn.Sequential(
             nn.ZeroPad2d((1, 2, 1, 2)),
+            nn.Conv2d(3, 3, kernel_size=3, padding=1),
+            nn.LeakyReLU(),
+            nn.Conv2d(3, 3, kernel_size=3, padding=1),
+            nn.LeakyReLU(),
             nn.Conv2d(3, 32, kernel_size=5, stride=2),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
         self.conv2 = nn.Sequential(
             nn.ZeroPad2d((1, 2, 1, 2)),
             nn.Conv2d(32, 64, kernel_size=5, stride=2),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
         self.conv3 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
         self.conv4 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
         self.fc1 = nn.Conv2d(256, 10, kernel_size=3, stride=2, padding=1)
 
@@ -53,7 +57,7 @@ class Autoencoder(nn.Module):
 
         self.fc_mu = nn.Sequential(
             nn.Linear(640, 200, bias=True),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
 
         self.fc_var = nn.Sequential(
@@ -63,46 +67,50 @@ class Autoencoder(nn.Module):
 
         self.emb_label = nn.Sequential(
             nn.Linear(self.label_num, 200, bias=True),
-            nn.ReLU()
+            nn.LeakyReLU()
         )
 
         self.fc2dec = nn.Linear(400, 640, bias=True)
 
         self.fc1dec = nn.Sequential(
-            nn.ConvTranspose2d(10, 256, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU()
+            nn.ConvTranspose2d(10, 256, kernel_size=2, stride=2),
+            nn.LeakyReLU()
         )
         self.conv4dec = nn.Sequential(
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(256, 128, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU()
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
+            nn.LeakyReLU()
 
         )
         self.conv3dec = nn.Sequential(
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(128, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU()
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
+            nn.LeakyReLU()
         )
         self.conv2dec = nn.Sequential(
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(64, 32, kernel_size=5, stride=2),
-            nn.ReLU()
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
+            nn.LeakyReLU()
         )
         self.conv1dec = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.ConvTranspose2d(32, 3, kernel_size=5, stride=2),
+            nn.LeakyReLU(),
+            nn.ConvTranspose2d(32, 3, kernel_size=2, stride=2),
+            nn.LeakyReLU(),
+            nn.Conv2d(3, 3, kernel_size=3, padding=1),
+            nn.LeakyReLU(),
+            nn.Conv2d(3, 3, kernel_size=3, padding=1),
             nn.Sigmoid()
         )
 
@@ -114,7 +122,6 @@ class Autoencoder(nn.Module):
         return eps.mul(std).add_(mu)
 
     def forward(self, x, label):
-        #encoded = self.encoder(x)
         encoded = self.conv1(x)
         encoded = self.conv2(encoded)
         encoded = self.conv3(encoded)
@@ -129,8 +136,9 @@ class Autoencoder(nn.Module):
         decoded = self.fc1dec(decoded.view(decoded.size()[0], 10, 8, 8))
         decoded = self.conv4dec(decoded)
         decoded = self.conv3dec(decoded)
-        decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
-        decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
+        decoded = self.conv2dec(decoded)
+        decoded = self.conv1dec(decoded)
+        decoded = torch.clamp(decoded, min=0.0, max=1.0)
         return mu, var, decoded
 
     def encode(self, x):
@@ -152,7 +160,8 @@ class Autoencoder(nn.Module):
         decoded = self.fc1dec(decoded.view(decoded.size()[0], 10, 8, 8))
         decoded = self.conv4dec(decoded)
         decoded = self.conv3dec(decoded)
-        decoded = self.conv2dec(decoded)[:, :, 1:-2, 1:-2]
-        decoded = self.conv1dec(decoded)[:, :, 1:-2, 1:-2]
+        decoded = self.conv2dec(decoded)
+        decoded = self.conv1dec(decoded)
+        decoded = torch.clamp(decoded, min=0.0, max=1.0)
         return decoded
 

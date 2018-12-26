@@ -58,8 +58,8 @@ def train_style_transfer(args):
     label_dict = train_dataset.get_label_dict()
     valid_dataset = FaceDataset(args.valid_data, transform=trans)
     valid_dataset.give_label_dict(label_dict)
-    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
-    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=2)
+    train_loader = data_utils.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
+    valid_loader = data_utils.DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, num_workers=1)
     train_size = len(train_dataset)
     valid_size = len(valid_dataset)
     loaders = {"train": train_loader, "valid": valid_loader}
@@ -73,17 +73,18 @@ def train_style_transfer(args):
     # make network
     if args.model_type == "VAE":
         net = Autoencoder(train_dataset.label_num()).to(device)
-        optimizer = optim.Adam(net.parameters(), lr=arg.lr, weight_decay=args.weight_decay)
+        optimizer = optim.Adam(net.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         best_model_wts = net.state_dict()
-        nest_loss =1e10
-        if args.generator_model:
+        best_loss =1e10
+        if args.generator_model and os.path.exists(args.generator_model):
             net.load_state_dict(torch.load(args.generator_model))
 
     elif args.model_type == "VAEGAN":
         generator = Autoencoder(train_dataset.label_num()).to(device)
         discriminator = Discriminator().to(device)
+        classifier = Classifier(train_dataset.label_num()).to(device)
         generator_optimizer = optim.Adam(generator.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-        discriminator_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+        discriminator_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr*0.1, weight_decay=args.weight_decay)
         best_generator_wts = generator.state_dict()
         best_discriminator_wts = discriminator.state_dict()
         best_generator_loss = 1e10
@@ -92,9 +93,11 @@ def train_style_transfer(args):
             generator.load_state_dict(torch.load(args.generator_model))
         if args.discriminator_model and os.path.exists(args.discriminator_model):
             discriminator.load_state_dict(torch.load(args.discriminator_model))
-
+        if args.classifier_model:
+            classifier.load_state_dict(torch.load(args.classifier_model))
     # make loss function and optimizer
     criterion = nn.BCELoss(reduction="sum")
+    classifier_criterion = nn.CrossEntropyLoss(reduction="sum")
 
     # initialize loss
     loss_history = {"train": [], "valid": []}
@@ -120,7 +123,6 @@ def train_style_transfer(args):
 
 
             # initialize running loss
-            running_loss = 0.0
             generator_running_loss = 0.0
             discriminator_running_loss = 0.0
 
@@ -145,16 +147,20 @@ def train_style_transfer(args):
                     if phase == "train":
                         loss.backward()
                         optimizer.step()
-                    running_loss += loss.item()
+                    generator_running_loss += loss.item()
 
                 elif args.model_type == "VAEGAN":
-                    real_label = Variable(torch.ones((inputs.size()[0], 1), dtype=torch.float)).to(device)
-                    fake_label = Variable(torch.zeros((inputs.size()[0], 1), dtype=torch.float)).to(device)
+                    real_label = Variable(torch.ones((inputs.size()[0], 1), dtype=torch.float) - 0.2*(torch.rand(inputs.size()[0], 1))).to(device)
+                    fake_label = Variable(torch.zeros((inputs.size()[0], 1), dtype=torch.float) + 0.2*(torch.rand(inputs.size()[0], 1))).to(device)
                     discriminator_optimizer.zero_grad()
 
                     real_pred = discriminator(inputs)
                     real_loss = criterion(real_pred, real_label)
 
+                    random_index = np.random.randint(0, train_dataset.label_num(), inputs.size()[0])
+                    generate_label = Variable(torch.zeros_like(label)).to(device)
+                    for i,index in enumerate(random_index):
+                        generate_label[i][index] = 1
                     mu, var, outputs = generator(inputs, label)
                     fake_pred = discriminator(outputs.detach())
                     fake_loss = criterion(fake_pred, fake_label)
@@ -165,7 +171,11 @@ def train_style_transfer(args):
                         discriminator_optimizer.step()
 
                     generator_optimizer.zero_grad()
-                    generator_loss = criterion(discriminator(outputs), real_label) + loss_func(inputs, outputs, mu, var)
+                    #class_loss = classifier_criterion(classifier(outputs), torch.max(label, 1)[1]) 
+                    
+                    dis_loss = criterion(discriminator(outputs), real_label)
+                    gen_loss = loss_func(inputs, outputs, mu, var)
+                    generator_loss = dis_loss + gen_loss
                     if phase == "train":
                         generator_loss.backward()
                         generator_optimizer.step()
@@ -174,7 +184,7 @@ def train_style_transfer(args):
                     generator_running_loss += generator_loss.item()
 
             if args.model_type == "VAE":
-                epoch_loss = running_loss / dataset_sizes[phase] * args.batch_size
+                epoch_loss = generator_running_loss / dataset_sizes[phase] * args.batch_size
                 loss_history[phase].append(epoch_loss)
 
                 print("{} loss {:.4f}".format(phase, epoch_loss))
@@ -200,7 +210,7 @@ def train_style_transfer(args):
     print("training complete in {:.0f}s".format(elapsed_time))
     if args.model_type == "VAE":
         net.load_state_dict(best_model_wts)
-        return net, loss_history, label_dict
+        return net, label_dict
 
     elif args.model_type == "VAEGAN":
         generator.load_state_dict(best_generator_wts)
@@ -246,7 +256,7 @@ def generate(args, model_params, label_dict):
         if label_name == []:
             label_name[0] = "unk"
         visible_image = (outputs[0].cpu().numpy()*255).astype(np.uint8).transpose(1, 2, 0)
-        cv2.imwrite("output_img/" + label_name[0] + ".jpg", visible_image )
+        cv2.imwrite("output_img_VAEGAN/" + label_name[0] + ".jpg", visible_image )
 
 
 def recog(args, model_params, image_dir_name, label_dict):
@@ -354,9 +364,6 @@ def train_classifier(args):
 
                 optimizer.zero_grad()
                 pred = classifier(inputs)
-                #print(pred)
-                #print("pred {}".format(torch.max(pred, 1)[1]))
-                #print("label {}".format(torch.max(label, 1)[1]))
                 reg_loss = 0
                 for param in classifier.parameters():
                     reg_loss += (param*param).sum()
@@ -471,7 +478,7 @@ if __name__ == "__main__":
     args = get_argument()
     with open("label.dict.pkl", "rb") as f:
         label_dict = pickle.load(f)
-    generate(args, "./weight_generator2.pth", label_dict)
+    generate(args,args.generator_model, label_dict)
     """
     if args.task == "style_transfer":
         model_weights, label_dict = train_style_transfer(args)
@@ -492,7 +499,6 @@ if __name__ == "__main__":
     else :
         print("must chose task (style_transfer, classify, resolute)")
         sys.exit()
-
     """
     """
     model_weights, loss_history, label_dict = train_style_transfer(args)
